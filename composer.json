@@ -1,0 +1,55 @@
+{
+    "name": "diskominfotik/query-filter",
+    "description": "Diskominfotik Query Search Filter Helper for Laravel",
+    "keywords": [
+        "diskominfotik",
+        "query-filter"
+    ],
+    "homepage": "https://git.jakarta.go.id/diskominfotik/query-filter",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Abu Abbas",
+            "email": "notificationfor.gitlabs@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^7.1",
+        "illuminate/support": "^6.0",
+        "illuminate/database": "^6.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^4.0",
+        "phpunit/phpunit": "^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Diskominfotik\\QueryFilter\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Diskominfotik\\QueryFilter\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Diskominfotik\\QueryFilter\\QueryFilterServiceProvider"
+            ],
+            "aliases": {
+                "QueryFilter": "Diskominfotik\\QueryFilter\\Facades\\QueryFilter"
+            }
+        }
+    }
+}
