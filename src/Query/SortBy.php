@@ -2,6 +2,7 @@
 
 namespace Diskominfotik\QueryFilter\Query;
 
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
 use Diskominfotik\QueryFilter\QueryFilter;
 
@@ -21,12 +22,14 @@ class SortBy extends QueryFilter
             return $builder->orderBy(array_pop($relation), $this->getDirection());
         } else {
             $field = array_pop($relation);
-            [$model, $join] = $this->getJoined($builder);
+            [$model, $join, $type] = $this->getJoined($builder);
             return $builder
                 ->select(["$model->name.*", "$join->name.$field as $alias"])
                 ->join(
                     $join->name,
-                    "$join->primary",
+                    strpos($type, 'belongs') !== false
+                        ? "$join->name.$join->primary"
+                        : "$join->primary",
                     "=",
                     "$model->name.$join->foreign"
                 )->orderBy("$join->name.$field", $this->getDirection());
@@ -69,17 +72,40 @@ class SortBy extends QueryFilter
         ];
         $sortby = explode(".", request($this->filterName()));
         $relationName = array_shift($sortby);
+        $relationType = $this->getRelationType($builder, $relationName);
         $relationship = (array)$builder->getModel()->$relationName();
+
         $relations = [];
         foreach ($relationship as $key => $value) {
             if (strpos($key, 'foreignKey')) $relations['foreignKey'] = $value;
             if (strpos($key, 'localKey')) $relations['localKey'] = $value;
+            if (strpos($key, 'ownerKey')) $relations['ownerKey'] = $value;
         }
         $relationTable = [
             "name" => $builder->getModel()->$relationName()->getRelated()->getTable(),
-            "primary" => array_shift($relations),
-            "foreign" => array_shift($relations),
+            "primary" => strpos($relationType, 'belongs') !== false
+                ? $relations['ownerKey']
+                : $relations['foreignKey'],
+            "foreign" => strpos($relationType, 'belongs') !== false
+                ? $relations['foreignKey']
+                : $relations['localKey'],
         ];
-        return [(object)$orignalTable, (object)$relationTable];
+        return [(object)$orignalTable, (object)$relationTable, $relationType];
+    }
+
+    /**
+     * Get relation type
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $builder
+     * @param String $relationName
+     * @return String
+     */
+    protected function getRelationType(Builder $builder, $relationName)
+    {
+        $className = get_class($builder->getModel());
+        $obj = new $className;
+        $type = get_class($obj->$relationName());
+        $path = explode('\\', $type);
+        return Str::camel(array_pop($path));
     }
 }
