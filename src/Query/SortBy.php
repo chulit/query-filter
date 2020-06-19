@@ -16,23 +16,12 @@ class SortBy extends QueryFilter
      */
     public function applyFilter(Builder $builder)
     {
-        $relation = explode(".", request($this->filterName()));
-        $alias = str_replace(".", "_", request($this->filterName()));
+        $relation = explode('.', request($this->filterName()));
         if (count($relation) == 1) {
             return $builder->orderBy(array_pop($relation), $this->getDirection());
         } else {
             $field = array_pop($relation);
-            [$model, $join, $type] = $this->getJoined($builder);
-            return $builder
-                ->select(["$model->name.*", "$join->name.$field as $alias"])
-                ->join(
-                    $join->name,
-                    strpos($type, 'belongs') !== false
-                        ? "$join->name.$join->primary"
-                        : "$join->primary",
-                    "=",
-                    "$model->name.$join->foreign"
-                )->orderBy("$join->name.$field", $this->getDirection());
+            return $this->getJoined($builder, $field);
         }
     }
 
@@ -63,34 +52,125 @@ class SortBy extends QueryFilter
      * @param \Illuminate\Database\Eloquent\Builder $builder
      * @return Array
      */
-    protected function getJoined(Builder $builder)
+    protected function getJoined(Builder $builder, String $field)
     {
-        $orignalTable = [
-            "name" => $builder->getModel()->getTable(),
-            "primary" => $builder->getModel()->getKeyName(),
-            "foreign" => $builder->getModel()->getForeignKey(),
-        ];
         $sortby = explode(".", request($this->filterName()));
         $relationName = array_shift($sortby);
         $relationType = $this->getRelationType($builder, $relationName);
-        $relationship = (array)$builder->getModel()->$relationName();
-
-        $relations = [];
-        foreach ($relationship as $key => $value) {
-            if (strpos($key, 'foreignKey')) $relations['foreignKey'] = $value;
-            if (strpos($key, 'localKey')) $relations['localKey'] = $value;
-            if (strpos($key, 'ownerKey')) $relations['ownerKey'] = $value;
-        }
-        $relationTable = [
-            "name" => $builder->getModel()->$relationName()->getRelated()->getTable(),
-            "primary" => strpos($relationType, 'belongs') !== false
-                ? $relations['ownerKey']
-                : $relations['foreignKey'],
-            "foreign" => strpos($relationType, 'belongs') !== false
-                ? $relations['foreignKey']
-                : $relations['localKey'],
+        $relationMapped = [
+            'hasOneOrMany' => ['hasOne', 'hasMany'],
+            'belongsTo' => ['belongsTo'],
+            'belongsOrMorphToMany' => ['belongsToMany', 'morphToMany']
         ];
-        return [(object)$orignalTable, (object)$relationTable, $relationType];
+
+        $relationFunction = '';
+        foreach ($relationMapped as $key => $value) {
+            if (in_array($relationType, $value)) {
+                $relationFunction = $key;
+                break;
+            }
+        }
+        return $this->$relationFunction($builder, $relationName, $field);
+    }
+
+    /**
+     * Handle join two table only
+     *
+     * @param Builder $builder
+     * @param String $table
+     * @param String $joinTable
+     * @param String $qualifiedTableKeyName
+     * @param String $qualifiedJoinTableForeignKey
+     * @param String $field
+     * @return Builder
+     */
+    protected function joinTwoTables(
+        Builder $builder,
+        String $table,
+        String $joinTable,
+        String $qualifiedTableKeyName,
+        String $qualifiedJoinTableForeignKey,
+        String $field
+    ) {
+        return $builder
+            ->select($table.'.*')
+            ->leftJoin($joinTable, $qualifiedTableKeyName, '=', $qualifiedJoinTableForeignKey)
+            ->orderBy("{$joinTable}.{$field}", $this->getDirection());
+    }
+
+    /**
+     * Handle HasOne or HasMany relations
+     *
+     * @param Builder $builder
+     * @param String $relationName
+     * @param String $field
+     * @return \Diskominfotik\QueryFilter\Query::joinTwoTables
+     */
+    protected function hasOneOrMany(Builder $builder, String $relationName, String $field)
+    {
+        $model = $builder->getModel();
+        $table = $model->getTable();
+        $joinTable = $model->$relationName()->getRelated()->getTable();
+        $qualifiedTableKeyName = $model->$relationName()->getQualifiedParentKeyName();
+        $qualifiedJoinTableForeignKey = $model->$relationName()->getQualifiedForeignKeyName();
+        return $this->joinTwoTables(
+            $builder,
+            $table,
+            $joinTable,
+            $qualifiedTableKeyName,
+            $qualifiedJoinTableForeignKey,
+            $field
+        );
+    }
+
+    /**
+     * Handle BelongsTo (HasOne reverse) relations
+     *
+     * @param Builder $builder
+     * @param String $relationName
+     * @param String $field
+     * @return \Diskominfotik\QueryFilter\Query::joinTwoTables
+     */
+    protected function belongsTo(Builder $builder, String $relationName, String $field)
+    {
+        $model = $builder->getModel();
+        $table = $model->getTable();
+        $joinTable = $model->$relationName()->getRelated()->getTable();
+        $qualifiedTableKeyName = "{$table}.{$model->$relationName()->getForeignKeyName()}";
+        $qualifiedJoinTableForeignKey = $model->$relationName()->getQualifiedOwnerKeyName();
+        return $this->joinTwoTables(
+            $builder,
+            $table,
+            $joinTable,
+            $qualifiedTableKeyName,
+            $qualifiedJoinTableForeignKey,
+            $field
+        );
+    }
+
+    /**
+     * Handle BelongsToMany or MorphToMany relations
+     *
+     * @param Builder $builder
+     * @param String $relationName
+     * @param String $field
+     * @return Builder
+     */
+    protected function belongsOrMorphToMany(Builder $builder, String $relationName, String $field)
+    {
+        $model = $builder->getModel();
+        $table = $model->getTable();
+        $relatedTable = $model->$relationName()->getRelated()->getTable();
+        $pivotTable = $model->$relationName()->getTable();
+        $qualifiedForeignPivotKeyName = $model->$relationName()->getQualifiedForeignPivotKeyName();
+        $qualifiedRelatedPivotKeyName = $model->$relationName()->getQualifiedRelatedPivotKeyName();
+        $qualifiedTableKeyName = $model->$relationName()->getQualifiedParentKeyName();
+        $qualifiedRelatedKeyName = "{$relatedTable}.{$model->$relationName()->getRelatedKeyName()}";
+        return $builder
+            ->select($table . '.*')
+            ->leftJoin($pivotTable, $qualifiedTableKeyName, '=', $qualifiedForeignPivotKeyName)
+            ->leftJoin($relatedTable, $qualifiedRelatedKeyName, '=', $qualifiedRelatedPivotKeyName)
+            ->orderBy("{$relatedTable}.{$field}", $this->getDirection());
     }
 
     /**
