@@ -48,9 +48,9 @@ trait HasQueryFilter
      *
      * @return Array|Collections
      */
-    public function getAllData()
+    public function getAllData(Builder $query = null)
     {
-        return $this->getFilterData()->get();
+        return $this->getFilterData($query)->get();
     }
 
     /**
@@ -58,12 +58,12 @@ trait HasQueryFilter
      *
      * @return Array|Collections
      */
-    public function getPagingData()
+    public function getPagingData(Builder $query = null)
     {
         $length = request()->has(config('query-filter.key.limit'))
             ? request(config('query-filter.key.limit'))
             : $this->perPage;
 
-        return $this->getFilterData()->paginate($length)->appends(request()->input());
+        return $this->getFilterData($query)->paginate($length)->appends(request()->input());
     }
 }
