@@ -73,24 +73,7 @@ class Search extends QueryFilter
             return (object)[
                 "relation" => $temp[0],
                 "fields" => (object)explode(",", $temp[1]),
-                "type" => $this->getRelationType($builder, $temp[0]),
             ];
         });
-    }
-
-    /**
-     * Get relation type
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $builder
-     * @param String $relationName
-     * @return String
-     */
-    protected function getRelationType(Builder $builder, $relationName)
-    {
-        $className = get_class($builder->getModel());
-        $obj = new $className;
-        $type = get_class($obj->$relationName());
-        $path = explode('\\', $type);
-        return Str::camel(array_pop($path));
     }
 }
